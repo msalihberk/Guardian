@@ -1,22 +1,79 @@
-from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
-    QMetaObject, QObject, QPoint, QRect,
-    QSize, QTime, QUrl, Qt)
-from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
-    QFont, QFontDatabase, QGradient, QIcon,
-    QImage, QKeySequence, QLinearGradient, QPainter,
-    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtCore import QCoreApplication, QMetaObject, QRect, QSize, Qt, QThread, Signal
+from PySide6.QtGui import QCursor, QFont, QIcon, QGuiApplication
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
-    QMenuBar, QPushButton, QSizePolicy, QStatusBar,
-    QVBoxLayout, QWidget, QMessageBox, QFileDialog)
+    QMenuBar, QPushButton, QStatusBar, QVBoxLayout, QWidget, QMessageBox, 
+    QFileDialog)
 import qdarkstyle
 import hashlib
-import os
 import sys
+import os
 import math
+import json
 
-from PySide6.QtCore import QThread, Signal
+def addline():
+    json.dump()
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+def report(self):
+    hash_value = ""
+    try:
+        with open(self.location, 'rb') as file:
+            file_content = file.read()
+            hash_value = hashlib.sha256(file_content).hexdigest()
+    except FileNotFoundError:
+        QMessageBox.warning(self, 'Error', 'File not found!')
+        return
+    except Exception as error:
+        QMessageBox.warning(self, 'Error', str(error))
+        return
+    try:
+        with open(saves, 'r') as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {"line": 959882, "reportedHashes": []}
+    if hash_value in data.get("reportedHashes", []):
+        QMessageBox.information(self, 'Info', 'This file is already reported as virus!')
+        return
+    data["reportedHashes"].append(hash_value)
+    if "line" in data and isinstance(data["line"], int):
+        data["line"] += 1
+    else:
+        data["line"] = 1
+    try:
+        with open(saves, 'w') as f:
+            json.dump(data, f, indent=4)
+    except Exception as error:
+        QMessageBox.warning(self, 'Error', f'Failed to update report json: {error}')
+        return
+    try:
+        with open(database, 'a') as db:
+            db.write('\n' + hash_value)
+        QMessageBox.information(self, 'Info', 'File successfully reported as virus!')
+    except FileNotFoundError:
+        QMessageBox.warning(self, 'Error', 'Database not found!')
+    except Exception as error:
+        QMessageBox.warning(self, 'Error', str(error))
+
+data = {"line":959882, "reportedHashes":[]}
 database = "Database/full_sha256.txt"
+saves = "Database/saves.json"
+if os.path.exists(saves):
+    try:
+        with open(saves, 'r') as _save:
+            data = json.load(_save)
+    except (json.JSONDecodeError, FileNotFoundError):
+        data = {"line":959882, "reportedHashes":[]}
+        with open(saves, 'w') as _save:
+            json.dump(data, _save, indent=4)
+else:
+    with open(saves, 'w') as _save:
+        json.dump(data, _save, indent=4)
 db_lines = 959882
 
 class HashCheckThread(QThread):
@@ -41,10 +98,22 @@ class HashCheckThread(QThread):
             self.error.emit(str(e))
             return
         try:
+            with open(saves, 'r') as f:
+                data = json.load(f)
+                db_lines = data["line"]
+                for hash in data["reportedHashes"]:
+                    if hash_value == hash:
+                        self.result.emit(True, hash_value)
+                        return
+        except:pass
+        try:
+            last_emitted_percent = -5
             with open(database, 'r') as db:
                 for idx, line in enumerate(db):
                     percent = math.floor(((idx+1)/db_lines) * 100)
-                    self.progress.emit(percent)
+                    if percent - last_emitted_percent >= 5:
+                        self.progress.emit(percent)
+                        last_emitted_percent = percent
                     if hash_value == line.strip():
                         self.result.emit(True, hash_value)
                         return
@@ -59,12 +128,80 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        self.setFixedSize(1000, 700)
         self.location = ""
         self.thread = None
         self.ui.SelectLocation.clicked.connect(self.selectLocation)
         self.ui.ScanBtn.clicked.connect(self.scan)
+        self.ui.ReportBtn.clicked.connect(self.report)
+        self.ui.WhitelistBtn.clicked.connect(self.add_to_whitelist)  
 
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+
+        window_width = int(screen_width * 0.8)
+        window_height = int(screen_height * 0.8)
+
+        self.resize(window_width, window_height)
+        self.setMinimumSize(QSize(1000, 700))
+        self.setMaximumSize(QSize(window_width, window_height))
+
+        self.move((screen_width - window_width) // 2, (screen_height - window_height) // 2)
+
+    def add_to_whitelist(self):
+        hash_value = ""
+        if not self.location:
+            QMessageBox.warning(self, "Warning", "Please select a file!")
+            return
+        try:
+            with open(self.location, 'rb') as file:
+                file_content = file.read()
+                hash_value = hashlib.sha256(file_content).hexdigest()
+        except FileNotFoundError:
+            QMessageBox.warning(self, 'Error', 'File not found!')
+            return
+        except Exception as error:
+            QMessageBox.warning(self, 'Error', str(error))
+            return
+        try:
+            with open(saves, 'r') as wl:
+                if hash_value in [line.strip() for line in wl]:
+                    QMessageBox.information(self, 'Info', 'This file is already in whitelist!')
+                    return
+        except FileNotFoundError:
+            pass
+        except Exception as error:
+            QMessageBox.warning(self, 'Error', str(error))
+            return
+        try:
+            with open(saves, 'r') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {"line": 959882, "reportedHashes": []}
+        if not (hash_value in data.get("reportedHashes", [])):
+            QMessageBox.information(self, 'Info', 'This file is already added whitelist!')
+            return
+        data["reportedHashes"].remove(hash_value)
+        if "line" in data and isinstance(data["line"], int):
+            data["line"] -= 1
+        else:
+            data["line"] = 0
+        try:
+            with open(saves, 'w') as f:
+                json.dump(data, f, indent=4)
+        except Exception as error:
+            QMessageBox.warning(self, 'Error', f'Failed to update report json: {error}')
+            return
+        try:
+            with open(database, 'r+') as db:
+                old_db = db.read()
+                new_db = old_db.replace(str(hash_value), '')
+                db.write(new_db)
+                QMessageBox.information(self, 'Info', 'File successfully added whitelist!')
+        except FileNotFoundError:
+            QMessageBox.warning(self, 'Error', 'Database not found!')
+        except Exception as error:
+            QMessageBox.warning(self, 'Error', str(error))
     def selectLocation(self):
         self.location = QFileDialog.getOpenFileName(self, "Select File")[0]
 
@@ -80,15 +217,27 @@ class MainWindow(QMainWindow):
         self.thread.error.connect(self.scan_error)
         self.thread.finished.connect(lambda: self.ui.ScanBtn.setEnabled(True))
         self.thread.start()
+    
+    def report(self):
+        if not self.location:
+            QMessageBox.warning(self, "Warning", "Please select a file!")
+            return
+        
+        answer = QMessageBox.question(self, 'Question', 'Do You Want To Report The File? ', defaultButton=QMessageBox.No)
+        if answer == QMessageBox.Yes:
+            report(self)
 
     def update_progress(self, percent):
         self.ui.proportion.setText(f"%{percent}")
 
     def scan_result(self, virus_found, hash_value):
         if virus_found:
+            self.ui.proportion.setText('%100')
             QMessageBox.critical(self, "Critical", f"Virus Detected! SHA256 {hash_value}")
+            self.ui.proportion.setText('%0')
         else:
             QMessageBox.information(self, "Info", "Virus Not Detected")
+            self.ui.proportion.setText('%0')
 
     def scan_error(self, message):
         QMessageBox.warning(self, "Warning", message)
@@ -100,15 +249,23 @@ class Ui_MainWindow(object):
         MainWindow.setAutoFillBackground(False)
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
+
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        screen_width = screen.width()
+        screen_height = screen.height()
+
+        window_width = int(screen_width * 0.8)
+        window_height = int(screen_height * 0.8)
+
         self.centralwidget.setMinimumSize(QSize(1000, 700))
-        self.centralwidget.setMaximumSize(QSize(1200, 900))
-        # Modern dark background
+        self.centralwidget.setMaximumSize(QSize(window_width, window_height))
+
         self.centralwidget.setStyleSheet("""
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #23272f, stop:1 #10131a);
         """)
         self.verticalLayoutWidget_2 = QWidget(self.centralwidget)
         self.verticalLayoutWidget_2.setObjectName(u"verticalLayoutWidget_2")
-        # Kartı ortalamak için daha büyük ve ortalanmış bir alan
+        
         self.verticalLayoutWidget_2.setGeometry(QRect(200, 90, 600, 520))
         self.verticalLayoutWidget_2.setStyleSheet("""
             background: rgba(30, 34, 44, 0.97);
@@ -120,6 +277,9 @@ class Ui_MainWindow(object):
         self.verticalLayout_2.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout = QVBoxLayout()
         self.verticalLayout.setObjectName(u"verticalLayout")
+        self.horizontalLayout = QHBoxLayout(self.verticalLayoutWidget_2)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
         self.MainLabel_2 = QLabel(self.verticalLayoutWidget_2)
         self.MainLabel_2.setObjectName(u"MainLabel_2")
         font = QFont()
@@ -153,10 +313,14 @@ class Ui_MainWindow(object):
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.ScanBtn = QPushButton(self.verticalLayoutWidget_2)
         self.ScanBtn.setObjectName(u"ScanBtn")
+        self.ReportBtn = QPushButton(self.verticalLayoutWidget_2)
+        self.ReportBtn.setObjectName(u"ReportBtn")
+        self.WhitelistBtn = QPushButton(self.verticalLayoutWidget_2)
+        self.WhitelistBtn.setObjectName(u"WhitelistBtn")
         font1 = QFont()
         font1.setFamilies([u"Montserrat", u"Segoe UI"])
         font1.setBold(True)
-        font1.setPointSize(16)
+        font1.setPointSize(14)
         self.ScanBtn.setFont(font1)
         self.ScanBtn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.ScanBtn.setStyleSheet("""
@@ -176,6 +340,44 @@ class Ui_MainWindow(object):
             }
         """)
         self.horizontalLayout.addWidget(self.ScanBtn)
+        self.WhitelistBtn.setFont(font1)
+        self.WhitelistBtn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.WhitelistBtn.setStyleSheet("""
+            QPushButton {
+                padding: 14px 32px;
+                border-radius: 12px;
+                font-weight: bold;
+                font-size: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00ff26, stop:1 #ceff00);
+                color: #23272f;
+                box-shadow: 0 2px 8px #00e67644;
+                transition: 0.2s;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #ceff00, stop:1 #00ff26);
+                color: #fff;
+            }
+        """)
+        self.horizontalLayout.addWidget(self.WhitelistBtn)
+        self.ReportBtn.setFont(font1)
+        self.ReportBtn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.ReportBtn.setStyleSheet("""
+            QPushButton {
+                padding: 14px 32px;
+                border-radius: 12px;
+                font-weight: bold;
+                font-size: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #ff0000, stop:1 #ff7a00);
+                color: #23272f;
+                box-shadow: 0 2px 8px #00e67644;
+                transition: 0.2s;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #ff7a00, stop:1 #ff0000);
+                color: #fff;
+            }
+        """)
+        self.horizontalLayout.addWidget(self.ReportBtn)
 
         self.SelectLocation = QPushButton(self.verticalLayoutWidget_2)
         self.SelectLocation.setObjectName(u"SelectLocation")
@@ -250,9 +452,17 @@ class Ui_MainWindow(object):
 #endif // QT_CONFIG(tooltip)
         self.ScanBtn.setText(QCoreApplication.translate("MainWindow", u"Scan", None))
 #if QT_CONFIG(tooltip)
+        self.WhitelistBtn.setToolTip(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>Add To Whitelist</p></body></html>", None))
+#endif // QT_CONFIG(tooltip)
+        self.WhitelistBtn.setText(QCoreApplication.translate("MainWindow", u"Whitelist", None))
+#if QT_CONFIG(tooltip)
+        self.ReportBtn.setToolTip(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>Report Virus</p></body></html>", None))
+#endif // QT_CONFIG(tooltip)
+        self.ReportBtn.setText(QCoreApplication.translate("MainWindow", u"Report", None))
+#if QT_CONFIG(tooltip)
         self.SelectLocation.setToolTip(QCoreApplication.translate("MainWindow", u"<html><head/><body><p>Select File</p></body></html>", None))
 #endif // QT_CONFIG(tooltip)
-        self.SelectLocation.setText(QCoreApplication.translate("MainWindow", u"Select Location", None))
+        self.SelectLocation.setText(QCoreApplication.translate("MainWindow", u"Select File", None))
         self.proportion.setText(QCoreApplication.translate("MainWindow", u"%0", None))
     # retranslateUi
 
@@ -260,6 +470,9 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyside6())
     win = MainWindow()
-    win.setWindowIcon(QIcon("Images/icon.png"))
+    icon_path = resource_path("icon.ico")
+    if os.path.exists(icon_path):
+        win.setWindowIcon(QIcon(icon_path))
+    win.setWindowIcon(QIcon("Images/icon.ico"))
     win.show()
     sys.exit(app.exec())
