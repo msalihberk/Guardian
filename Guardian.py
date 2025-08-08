@@ -26,6 +26,7 @@ def report(self):
         with open(self.location, 'rb') as file:
             file_content = file.read()
             hash_value = hashlib.sha256(file_content).hexdigest()
+            file.close()
     except FileNotFoundError:
         QMessageBox.warning(self, 'Error', 'File not found!')
         return
@@ -54,6 +55,7 @@ def report(self):
     try:
         with open(database, 'a') as db:
             db.write('\n' + hash_value)
+            db.close()
         QMessageBox.information(self, 'Info', 'File successfully reported as virus!')
     except FileNotFoundError:
         QMessageBox.warning(self, 'Error', 'Database not found!')
@@ -91,6 +93,7 @@ class HashCheckThread(QThread):
             with open(self.location, 'rb') as file:
                 file_content = file.read()
                 hash_value = hashlib.sha256(file_content).hexdigest()
+                file.close()
         except FileNotFoundError:
             self.error.emit("File Not Found!")
             return
@@ -157,6 +160,7 @@ class MainWindow(QMainWindow):
             with open(self.location, 'rb') as file:
                 file_content = file.read()
                 hash_value = hashlib.sha256(file_content).hexdigest()
+                file.close()
         except FileNotFoundError:
             QMessageBox.warning(self, 'Error', 'File not found!')
             return
@@ -193,10 +197,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, 'Error', f'Failed to update report json: {error}')
             return
         try:
-            with open(database, 'r+') as db:
+            with open(database, 'r') as db:
                 old_db = db.read()
+                db.close()
+            with open(database, 'w') as db:
                 new_db = old_db.replace(str(hash_value), '')
                 db.write(new_db)
+                db.close()
                 QMessageBox.information(self, 'Info', 'File successfully added whitelist!')
         except FileNotFoundError:
             QMessageBox.warning(self, 'Error', 'Database not found!')
