@@ -4,8 +4,7 @@ Guardian is a modern, stylish, and simple antivirus application built with Pytho
 
 ## Features
 - Beautiful and modern dark-themed user interface
-- Fast file scanning with progress indicator (progress updates every 5%)
-- Uses a separate thread (QThread) for scanning to keep the UI responsive
+- Fast file scanning with progress indicator
 - Alerts you if a file is detected as malicious
 - Easy file selection and scanning
 - **Report Virus**: You can report a file as a virus, which adds its hash to a local JSON and the database
