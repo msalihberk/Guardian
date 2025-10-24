@@ -29,7 +29,7 @@ Guardian is a modern, stylish, and simple antivirus application built with Pytho
    python Guardian.py
    ```
 2. Click **Select File** to choose a file you want to scan.
-3. Click **Scan** to start scanning. The progress will update every 5% and the result will be displayed in the interface.
+3. Click **Scan** to start scanning.
 4. To report a file as a virus, click **Report** after selecting a file. Confirm the dialog to add its hash to the database and report list.
 5. To add a file to the whitelist, click **Whitelist** after selecting a file. This will remove its hash from the reported list and database if present.
 
@@ -45,14 +45,11 @@ Guardian is a modern, stylish, and simple antivirus application built with Pytho
 - The hash is compared line by line with the hashes in `Database/full_sha256.txt`.
 - If a match is found, the file is flagged as a virus.
 - All scanning is done in a background thread (QThread) for a smooth user experience.
-- Progress is only updated every 5% to keep the UI fast and responsive, even with large databases.
 - When you report a virus, its hash is added to `Database/saves.json` and the main database.
 - When you add to whitelist, the hash is removed from the reported list and the main database.
 
 ## Customization
 - You can update the hash database by replacing `Database/full_sha256.txt` with your own list of SHA256 hashes.
-- The UI can be further customized in `Guardian.py` inside the `Ui_MainWindow` class.
-- Threading and progress logic can be found in the `HashCheckThread` class in `Guardian.py`.
 
 ## License
 This project is for educational purposes. Use at your own risk.
